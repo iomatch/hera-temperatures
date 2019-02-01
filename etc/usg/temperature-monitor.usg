@@ -1,0 +1,3 @@
+[threshold-in-degrees]
+
+Use threshold-in-degrees as the low limit. Otherwise built-in default is used.

@@ -1,0 +1,168 @@
+#!/bin/bash
+strtTme=$(date +%s.%N)
+
+#################################
+#
+#  version: 0.0.1.0004
+#  date: 27.11.2018
+#  mod': 30.01.2019
+#  Copyright Tommi Nikkilae 2018
+#  url: http://f8.oire.fi/blog (techy things)
+#  url: http://f8.oire.fi/ (my photos)
+#  email: f8@oire.fi
+#  Released under GNU GPLv3
+#
+#################################
+
+# Use
+#
+	rootRequired=0
+#
+# if the script DOES NOT need elevated priviledges
+# NOTE: user must explicitly define rootRequired=0
+# or root priviledges will be needed!
+
+#################################
+#
+#  Message for usage()
+#  If one is not provided
+#  we will look for one in the
+#  directory defined in common.cfg
+#  and provide that if found.
+#
+#IFS='' read -r -d '' usageMessage <<ENDMESSAGE
+#A brief summary of the command and how it operates.
+#$(/usr/bin/basename "$0") uses no parameters.
+#NOTE! One must be provided still!
+#ENDMESSAGE
+#
+# This ends usage() message [usageMessage]
+#
+#################################
+
+#################################
+#
+#  Common variables
+#  ALL common cofigurations
+#  and functions, etc. go to:
+#
+#  /usr/local/etc/common.cfg
+#
+	. "/usr/local/etc/common.cfg"
+#
+#  for debugging, use 1 (or '--test')
+#  for production, use 0
+#  Default is '0'
+	debug=0
+	logging=1
+#
+#  If you want errors to kill the script, use
+	errKills=1
+#  else the exit code is just returned from function with
+#	errKills=0
+#  Default is '1'
+#
+#  Common variables end
+#
+#################################
+
+#################################
+#
+#  Define if push notifications are sent or not
+#
+	push=1
+#
+#  Define the minimum time between push notifications
+#
+	minNotifyIntervalInMinutes=30
+#
+#################################
+
+#################################
+#
+#  Set some more variables here if needed
+#	myVar1=foo
+#	myVar2="Lorem ipsum."
+#  We need recovery tracker file also...
+   trckErrRcvry=trckErr"-rcvry"
+	if [ -z "$tempLowLimit" ]; then
+		[ -z "$1" ] && tempLowLimit="0.5" || tempLowLimit=$1
+		tempRecoveryThreshold="0.2"
+	fi
+#  This will not work as bc has no add-leading-zero-if-missing operative.
+#  tempRecoveryLimit=$(${SH_ECHO} "scale=1;$tempLowLimit+$tempRecoveryThreshold"|bc -l)
+#  We'll use
+   tempRecoveryLimit=$(${SH_ECHO} "$tempLowLimit $tempRecoveryThreshold" | ${SH_AWK} '{printf "%s", $1 + $2}')
+#
+#################################
+
+#################################
+#
+#  Functions begin here
+#
+#  Functions end. Your code starts here.
+#
+#################################
+
+## [ "$debug" -gt "0" ] && ntfy "My limits are low: $tempLowLimit and recovery: $tempRecoveryLimit!"
+
+#[ -z "$1" ] && usage
+#[ something "$1" ] || err "1" "$1"
+
+OID=".1.3.6.1.2.1.25.1.11.1"
+res="0"
+mySensor1="/sys/bus/w1/devices/28-03170422eaff"
+
+tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
+in=$(getDHTread "temp")
+
+if [ $(${SH_ECHO} "$in>$tempLowLimit" | bc) -eq 0 ]; then
+	logThis "Temperature is below $tempLowLimit"$'\xc2\xb0'"C ($in"$'\xc2\xb0'"C)!"
+	err 20 "$in"$'\xc2\xb0'"C" "$tempLowLimit"$'\xc2\xb0'"C"
+elif [ -e "$trckErr" ]; then
+	echo "Above. The file exists."
+	if [[ $(${SH_ECHO} "$in<$tempRecoveryLimit" | bc) -eq 0 ]]; then
+#	if [[ $(${SH_ECHO} "$in>$tempRecoveryLimit" | bc) -eq 0 ]]; then
+
+	# we must assume the temperature was below threshold before
+	# if we want to get notified when it was and is no more
+	# So, let's test if we have an error file (this is true
+	# if notification was sent previously)
+		pushTemp=$push
+		push=1
+		msg="Temperature has recovered and is now: $in"$'\xc2\xb0'"C (alert threshold: $tempRecoveryLimit"$'\xc2\xb0'"C)."
+		${SH_RM} -f $trckErr # || err "4" "$timeDiff"
+		ntfy "$msg"
+		logThis "Temperature recovered to above $tempRecoveryLimit"$'\xc2\xb0'"C ($in"$'\xc2\xb0'"C)! A notify was sent."
+		push=$pushTemp
+		${SH_RM} -f $trckErr # || err "4" "$timeDiff"
+		## [ -e "$trckErr" ] && logThis "The thing is still here!" || logThis "I finally destroyed the thing!"
+		# See, the thing is that scriptEnd() will do a push (again) and then create a lock file
+		# That will loop this option forever and ever when temperature "has recovered". We need to
+		# notify of this recovery *only once*. To do this, we will kill the script here.
+		# Dont worry: the script has already done it's bit and can safely be killed here.
+		exit 0
+	else
+		msg="Temperature has recovered and is now: $in"$'\xc2\xb0'"C. This however is nothing new. I will not notify anyone of this. See: $trckErr"
+		logThis "$msg"
+		# see above: we need to kill the script here and now.
+		# exit 0
+	fi
+else
+	msg="Temperature is above the notify treshold limit of $tempRecoveryLimit"$'\xc2\xb0'"C: $in"$'\xc2\xb0'"C)! No previous notification? Then this is not a recovery and no notification should be sent this time, either. [Based on existing '$trckErr' file.]"
+	logThis "$msg"
+fi
+
+msg="Temperature (in): $in"$'\xc2\xb0'"C."
+#${SH_ECHO} "My limits are low: $tempLowLimit"$'\xc2\xb0'"C and recovery: $tempRecoveryLimit"$'\xc2\xb0'"C!"
+#${SH_ECHO} $msg
+[ "$1" == "-p" ] && ${SH_ECHO} $msg
+
+#################################
+#
+# End the script
+#
+push=0
+scriptEnd
+#
+#################################
