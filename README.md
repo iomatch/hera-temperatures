@@ -10,6 +10,10 @@ Linux bash scripts (etc.) needed to operate DHT22 & DS18B20 temperature sensors.
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
 
 ### Prerequisites
+ - DHT22 & DS18B20 temperature sensors
+ 
+ - A [Raspberry Pi](https://www.raspberrypi.org/) running [Raspbian GNU/Linux](https://www.raspbian.org/) 9 (stretch) or newer
+ 
  - [pigpiod](https://github.com/guymcswain/pigpio-client/wiki/Install-and-configure-pigpiod) 
 
 	A C library to manipulate the Pi's GPIO.
