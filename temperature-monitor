@@ -3,9 +3,9 @@ strtTme=$(date +%s.%N)
 
 #################################
 #
-#  version: 0.0.1.0004
+#  version: 0.0.1.0011
 #  date: 27.11.2018
-#  mod': 30.01.2019
+#  mod': 02.02.2019
 #  Copyright Tommi Nikkilae 2018
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -48,13 +48,14 @@ strtTme=$(date +%s.%N)
 #
 #  /usr/local/etc/common.cfg
 #
-	. "/usr/local/etc/common.cfg"
+	myPathIs=${0%/*}
+	. "$myPathIs/etc/common.cfg"
 #
 #  for debugging, use 1 (or '--test')
 #  for production, use 0
 #  Default is '0'
 	debug=0
-	logging=1
+	logging=0
 #
 #  If you want errors to kill the script, use
 	errKills=1
@@ -63,6 +64,16 @@ strtTme=$(date +%s.%N)
 #  Default is '1'
 #
 #  Common variables end
+#
+#################################
+
+#################################
+#
+#  Dependencies check
+#
+	checkDep "/usr/lib/libpigpiod_if2.so"
+#
+#  Dependencies check end
 #
 #################################
 
@@ -88,6 +99,8 @@ strtTme=$(date +%s.%N)
 	if [ -z "$tempLowLimit" ]; then
 		[ -z "$1" ] && tempLowLimit="0.5" || tempLowLimit=$1
 		tempRecoveryThreshold="0.2"
+	elif [ ! -z "$1" ]; then
+		tempLowLimit=$1
 	fi
 #  This will not work as bc has no add-leading-zero-if-missing operative.
 #  tempRecoveryLimit=$(${SH_ECHO} "scale=1;$tempLowLimit+$tempRecoveryThreshold"|bc -l)
