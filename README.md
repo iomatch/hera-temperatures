@@ -40,7 +40,7 @@ pigpiod -v
 
 ### Installing
 
-Create /lockdir/ directory and make it universally writable. This will be used by the scripts to store lock information in. The lock information cannot be stored in /tmp as it gets cleared [at least] at boot-time and many of the scripts (say, bootmsg.sh) will need to keep time-relative track of notifications across boots and /tmp being randomly cleared cannot be used for this.
+Create /lockdir/ directory and make it universally writable. This will be used by the scripts to store lock information in. The lock information cannot be stored in /tmp as it gets cleared [at least] at boot-time and many of the scripts (notably the ones sending PushBullet messages, eg. temperature-monitor) will need to keep time-relative track of notifications across boots and /tmp being randomly cleared cannot be used for this.
 
 After downloading the scripts (and their respective folders) to [/path/to/your/scripts], add [/path/to/your/scripts] to env $PATH (usually you can just edit your .profile, located in your $HOME, to contain eg. PATH="$PATH:$HOME[your/scripts]")
 

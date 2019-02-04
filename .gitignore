@@ -1,0 +1,5 @@
+etc/conf/*
+!etc/conf/example.conf
+
+*.swp
+
