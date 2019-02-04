@@ -2,10 +2,7 @@
 
 etc/conf/*
 !etc/conf/example.conf
+!etc/conf/webcam.img-and-transfer.conf
 
-etc/conf/*
-!etc/conf/temperature_sensor_pollall.conf
-
-etc/conf/
 
 *.swp
