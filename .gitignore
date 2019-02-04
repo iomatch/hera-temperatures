@@ -1,4 +1,11 @@
 .gitignore
-etc/conf/
+
+etc/conf/*
 !etc/conf/example.conf
+
+etc/conf/*
+!etc/conf/temperature_sensor_pollall.conf
+
+etc/conf/
+
 *.swp
