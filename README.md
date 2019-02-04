@@ -1,5 +1,5 @@
 # hera-temperatures
-# version: 0.9.2
+# version: 0.9.3
 Linux bash scripts (etc.) needed to operate DHT22 & DS18B20 temperature sensors. 
 
  * [My Blog](http://f8.oire.fi/blog)
@@ -109,4 +109,3 @@ This project is licensed under the GNU GPL v.3 - see the [LICENSE.md](LICENSE.md
 * Jaana, without whom all this would not be possible.
 * Hat tip to also anyone whose code was (ab)used
 * The Linux and OpenSource communities!
-
