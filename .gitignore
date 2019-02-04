@@ -1,8 +1,0 @@
-.gitignore
-
-etc/conf/*
-!etc/conf/example.conf
-!etc/conf/webcam.img-and-transfer.conf
-
-
-*.swp
