@@ -1,5 +1,5 @@
 # hera-temperatures
-# version: 0.9.3
+# version: 0.9.4
 Linux bash scripts (etc.) needed to operate DHT22 & DS18B20 temperature sensors. 
 
  * [My Blog](http://f8.oire.fi/blog)

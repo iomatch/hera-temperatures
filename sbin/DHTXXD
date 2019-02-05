@@ -3,9 +3,9 @@ strtTme=$(date +%s.%N)
 
 #################################
 #
-#  version: 1.2.2.0004
+#  version: 1.2.2.0005
 #  date: 25.05.2018
-#  mod': 04.02.2019
+#  mod': 05.02.2019
 #  Copyright Tommi Nikkilae 2018-2019
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -129,7 +129,7 @@ while [ -f "$dht22LockFile" ]; do
 	${SH_SLEEP} $sleep;
 	(( i++ ))
 	if [ "$i" -eq "$maxWaitIters" ]; then
-		err 9 "$i"
+		err 19 "$myNameIs, $i tries"
 		break
 	fi
 done
