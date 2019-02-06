@@ -3,9 +3,9 @@ strtTme=$(date +%s.%N)
 
 #################################
 #
-#  version: 0.0.2.0003
+#  version: 0.0.3.0001
 #  date: 27.11.2018
-#  mod': 05.02.2019
+#  mod': 06.02.2019
 #  Copyright Tommi Nikkilae 2018
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -135,27 +135,34 @@ tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
 #in=$(getDHTread "temp")
 
 i=0
-in=$(${SH_DHT}|${SH_CUT} -d " " -f 2)
+DHT22raw=$(${SH_DHT})
+inStatus=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 1)
+in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
+#logThis "inStatus: $inStatus, in: $in"
 
-while [ -z "$in" ]; do
+while [ "$inStatus" -ne "0" ]; do
 	if [ "$i" -eq "$maxIters" ]; then
+		loggingTmp=$logging
+		logging=1
+		iterSecs=$(echo "scale=0; ($i*$sleep)/1"|bc -l)
+		err 19 "stat: $inStatus, read: $in"
+		#logThis "Read error from DHT22. Error count: $i of $maxIters [$iterSecs sec(s)]). Got result (\$in) '$in', (\$inStatus) '$inStatus'." "W"
+		logging=$loggingTmp
 		break
 		exit 1
 	fi
 
-#	[ -z "$in" ] && ${SH_SLEEP} $sleep || break
-	if [ -z "$in" ]; then
-		loggingTmp=$logging
-		logging=1
-		iterSecs=$(echo "scale=0; ($i*$sleep)/1"|bc -l)
-		logThis "Read error from DHT22. Error count: $i of $maxIters [$iterSecs sec(s)]). Got result (\$in) '$in'." "D"
-		logging=$loggingTmp
+	if [ "$inStatus" -ge "0" ]; then
 		${SH_SLEEP} $sleep
 	else
 		break
 		exit 1
 	fi
-	in=$(${SH_DHT}|${SH_CUT} -d " " -f 2)
+#	in=$(${SH_DHT}|${SH_CUT} -d " " -f 2)
+	DHT22raw=$(${SH_DHT})
+	inStatus=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 1)
+	in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
+	logThis "Read error from DHT22 recovered; stat: $inStatus, read: $in"
 	(( i++ ))
 done
 
