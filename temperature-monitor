@@ -103,7 +103,6 @@ strtTme=$(date +%s.%N)
 		tempLowLimit=$1
 	fi
 #
-
 	sleep="1.5"
 	maxIters=10
 	res="0"
@@ -131,40 +130,41 @@ strtTme=$(date +%s.%N)
 #[ -z "$1" ] && usage
 #[ something "$1" ] || err "1" "$1"
 
-tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
-#in=$(getDHTread "temp")
+#tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
+logThis "Querying the DHT22..." "T"
+in=$(getDHTread "temp")
 
-i=0
-DHT22raw=$(${SH_DHT})
-inStatus=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 1)
-in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
-#logThis "inStatus: $inStatus, in: $in"
+#inStatus=$(${SH_ECHO} "$DHT22raw" |${SH_CUT} -d " " -f 1)
+#in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
+#hum=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 3)
+#logThis "Statuses read from source: $DHT22raw." "D"
+#logThis "Human readable statuses read from source: $inStatus. Temperature: $in"$'\xc2\xb0'"C. Humidity: $hum%." "D"
 
-while [ "$inStatus" -ne "0" ]; do
-	if [ "$i" -eq "$maxIters" ]; then
-		loggingTmp=$logging
-		logging=1
-		iterSecs=$(echo "scale=0; ($i*$sleep)/1"|bc -l)
-		err 19 "stat: $inStatus, read: $in"
-		#logThis "Read error from DHT22. Error count: $i of $maxIters [$iterSecs sec(s)]). Got result (\$in) '$in', (\$inStatus) '$inStatus'." "W"
-		logging=$loggingTmp
-		break
-		exit 1
-	fi
-
-	if [ "$inStatus" -ge "0" ]; then
-		${SH_SLEEP} $sleep
-	else
-		break
-		exit 1
-	fi
+#while [ "$inStatus" -ne "0" ]; do
+#	if [ "$i" -eq "$maxIters" ]; then
+#		loggingTmp=$logging
+#		logging=1
+#		iterSecs=$(echo "scale=0; ($i*$sleep)/1"|bc -l)
+#		err 19 "stat: $inStatus, read: $in"
+#		logThis "Read error from DHT22. Error count: $i of $maxIters [$iterSecs sec(s)]). Got result (\$in) '$in', (\$inStatus) '$inStatus'." "T"
+#		logging=$loggingTmp
+#		exit 1
+#	else
+#		logThis "Recovered read error from DHT22. Error count: $i of $maxIters [$iterSecs sec(s)]). Got result (\$in) '$in', (\$inStatus) '$inStatus'." "D"
+#	fi
+#
+#	if [ "$inStatus" -ge "0" ]; then
+#		${SH_SLEEP} $sleep
+#	else
+#		exit 1
+#	fi
 #	in=$(${SH_DHT}|${SH_CUT} -d " " -f 2)
-	DHT22raw=$(${SH_DHT})
-	inStatus=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 1)
-	in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
-	logThis "Read error from DHT22 recovered; stat: $inStatus, read: $in"
-	(( i++ ))
-done
+#	DHT22raw=$(${SH_DHT})
+#	inStatus=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 1)
+#	in=$(${SH_ECHO} "$DHT22raw"|${SH_CUT} -d " " -f 2)
+#	logThis "Read error from DHT22 recovered; stat: $inStatus, read: $in"
+#	(( i++ ))
+#done
 
 if [ $(${SH_ECHO} "$in>$tempLowLimit" | bc) -eq 0 ]; then
 	logThis "Temperature is below $tempLowLimit"$'\xc2\xb0'"C ($in"$'\xc2\xb0'"C)!"
@@ -191,19 +191,19 @@ elif [ -e "$trckErr" ]; then
 		exit 0
 	else
 		msg="Temperature has recovered and is now: $in"$'\xc2\xb0'"C. This however is nothing new. I will not notify anyone of this. See: $trckErr"
-		[ "$debug" -gt "0" ] && logThis "$msg"
+		logThis "$msg" "D"
 		# see above: we need to kill the script here and now.
 		# exit 0
 	fi
 else
 	msg="Temperature is above the notify treshold limit of $tempRecoveryLimit"$'\xc2\xb0'"C: $in"$'\xc2\xb0'"C)! No previous notification? Then this is not a recovery and no notification should be sent this time, either. [Based on existing '$trckErr' file.]"
-	[ "$debug" -gt "0" ] && logThis "$msg"
+	logThis "$msg" "D"
 fi
 
 msg="Temperature (in): $in"$'\xc2\xb0'"C."
-#${SH_ECHO} "My limits are low: $tempLowLimit"$'\xc2\xb0'"C and recovery: $tempRecoveryLimit"$'\xc2\xb0'"C!"
+logThis "My limits are low: $tempLowLimit"$'\xc2\xb0'"C and recovery: $tempRecoveryLimit"$'\xc2\xb0'"C!" "T"
 #${SH_ECHO} $msg
-logThis "$msg"
+logThis "$msg [Alert threshold $tempLowLimit"$'\xc2\xb0'"C]" "I"
 #################################
 #
 # End the script

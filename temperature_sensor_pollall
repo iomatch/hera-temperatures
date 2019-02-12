@@ -1,10 +1,11 @@
 #!/bin/bash
 strtTme=$(date +%s.%N)
+myNameIs=${0##*/}
 #################################
 #
-#  version: 0.1.0.0004
+#  version: 0.1.1.0001
 #  date: 17.11.2018
-#  mod': 04.02.2019
+#  mod': 12.02.2019
 #  Copyright Tommi Nikkilae 2018
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -42,17 +43,18 @@ strtTme=$(date +%s.%N)
 #################################
 #
 #  Common variables
+#  for debugging, use 1 (or '--test')
+#  for production, use 0
+#  Default is '0'
+	debug=0
+#
 #  ALL common cofigurations
 #  and functions, etc. go to:
 #
 #  /usr/local/etc/common.cfg
 #
-	source "/usr/local/etc/common.cfg"
-#
-#  for debugging, use 1 (or '--test')
-#  for production, use 0
-#  Default is '0'
-	debug=1
+	myPathIs=${0%/*}
+	. "$myPathIs/etc/common.cfg" || logger "$myNameIs :: Error loading common files..."
 #
 #  If you want errors to kill the script, use
 	errKills=1
@@ -81,7 +83,9 @@ strtTme=$(date +%s.%N)
 #  Set some more variables here
 #	myVar1=foo
 #	myVar2="Lorem ipsum."
-	srcFile=/tmp/temps.php
+#	srcFile="/tmp/temps.php"
+	outFile="temps.php"
+	srcFile="$tmpFile"
 	dstPath="/var/www/fs2/21/oirefi/heramaki/input"
 	dstPath2="/var/www/include"
 	dstPath3="/netstorage/heralan/share"
@@ -90,7 +94,9 @@ strtTme=$(date +%s.%N)
 	csvFile="/netstorage/heralan/share/heratemps.csv"
 	localCSVFile="/usr/local/share/heratemps.csv"
 	res="0"
-#
+	OID=".1.3.6.1.2.1.25.1.11.1"
+	mySensor1="/sys/bus/w1/devices/28-03170422eaff"
+	sConvTime=$(( ${sTime} ${SIGN} ( ${HOURS} * 3600 + ${MINUTES} * 60 ) ))
 #
 #################################
 
@@ -106,25 +112,34 @@ strtTme=$(date +%s.%N)
 #
 # Actual code part goes here...
 #
-OID=".1.3.6.1.2.1.25.1.11.1"
-res="0"
-mySensor1="/sys/bus/w1/devices/28-03170422eaff"
+	logThis "Print variables:" "T"
+	showVars "srcFile" "dstPath" "dstPath2"	"dstPath3" "localDSTFile" "webCamFile" "csvFile" "localCSVFile"	"OID" "mySensor1"
+	tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
+	out=$(${SH_ECHO} "scale=1;$tempRaw/1000" | bc -l| ${SH_SED} 's/^\./0./'| ${SH_SED} 's/^-\./-0./')
 
-tempRaw=$(${SH_GREP} "t=" $mySensor1/w1_slave|${SH_CUT} -d "=" -f 2)
-out=$(${SH_ECHO} "scale=1;$tempRaw/1000" | bc -l| ${SH_SED} 's/^\./0./'| ${SH_SED} 's/^-\./-0./')
+	logThis "Querying the DHT22..." "T"
+	dht22Res=$(getDHTread "raw")
+#	res=$(getDHTread "raw")
+	logThis "Result: $dht22Res" "T"
+	logThis "Result: $res" "T"
+	#in=$(getDHTread "temp")
+	in=$(${SH_ECHO} "$dht22Res"|${SH_CUT} -d ' ' -f 2)
+	#hum=$(getDHTread "hum")
+	hum=$(${SH_ECHO} "$dht22Res"|${SH_CUT} -d ' ' -f 3)
+	logThis "DHT22, temperature result: $in" "T"
+	logThis "DHT22, humidity result: $hum" "T"
 
-#in=$(getDHTread "temp")
-in=$(${SH_DHT}|${SH_CUT} -d " " -f 2)
-#hum=$(getDHTread "hum")
-hum=$(${SH_DHT}|${SH_CUT} -d " " -f 3)
+	msg="DS18B20: Temperature: $out"$'\xc2\xb0'"C .::. DHT22: Temperature: $in"$'\xc2\xb0'"C .::. DHT22: Humidity: $hum%"
+	msg2="Temperature (out): $out"$'\xc2\xb0'"C .::. Temperature (in): $in"$'\xc2\xb0'"C .::. Humidity (in): $hum%"
+	msg3="$sTime,$out,$in,$hum"
 
-msg="DS18B20: Temperature: $out"$'\xc2\xb0'"C .::. DHT22: Temperature: $in"$'\xc2\xb0'"C .::. DHT22: Humidity: $hum%"
-msg2="Temperature (out): $out"$'\xc2\xb0'"C .::. Temperature (in): $in"$'\xc2\xb0'"C .::. Humidity (in): $hum%"
-msg3="$sTime,$out,$in,$hum"
+	logThis "Result for $msg" "T"
+	logThis "Result for $msg2 " "T"
+	logThis "Raw data for export: $msg3" "T"
+	${SH_ECHO} "$msg2" > $webCamFile
+	${SH_ECHO} "$msg3" >> $localCSVFile
 
-${SH_ECHO} "$msg2" > $webCamFile
-${SH_ECHO} "$msg3" >> $localCSVFile
-
+	logThis "Write data to $srcFile." "T"
 ${SH_CAT} << TOFILE > $srcFile
 <?php
 \$cooptemp="$in";
@@ -133,20 +148,27 @@ ${SH_CAT} << TOFILE > $srcFile
 \$temptime="$sConvTime";
 ?>
 TOFILE
+	logThis "Data written to $srcFile." "T"
 
-username="oirefi"
-host="heramaki.fi"
-transfer $srcFile $dstPath $username $host
+	logThis "Transferring files..." "T"
+	username="oirefi"
+	host="heramaki.fi"
+	transfer "$srcFile" "$dstPath/$outFile" "$username" "$host"
 
-username=pi
-host=heraaccess
-transfer $srcFile $dstPath2 $username $host
-transfer $localCSVFile $dstPath3 $username $host
+	username=pi
+	host=heraaccess
 
-#[ -w "$localDSTFile" ] && ${SH_CP} -f $srcFile $localDSTFile || logThis "$localDSTFile is not writable."
-#[ -w "$localCSVFile" ] && ${SH_CP} -f $localCSVFile $csvFile || logThis "$localCSVFile is not writable."
+	transfer "$srcFile" "$dstPath2/$outFile" "$username" "$host"
+	transfer "$localCSVFile" "$dstPath3/$outFile" "$username" "$host"
 
-[ "$1" == "-p" ] && ${SH_ECHO} $msg
+	logThis "transfer() $srcFile $dstPath/$outFile $username $host"
+	logThis "transfer() $srcFile $dstPath2/$outFile $username $host" "T"
+	logThis "transfer() $localCSVFile $dstPath3/$outFile $username $host" "T"
+
+	logThis "File transfer complete" "T"
+
+	[ "$1" == "-p" ] && ${SH_ECHO} $msg
+	logThis "Temperature sensor polling done." "T"
 #
 #################################
 
@@ -154,6 +176,6 @@ transfer $localCSVFile $dstPath3 $username $host
 #
 # End the script
 #
-scriptEnd
+	scriptEnd
 #
 #################################

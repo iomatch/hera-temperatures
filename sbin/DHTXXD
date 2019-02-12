@@ -1,11 +1,12 @@
 #!/bin/bash
 strtTme=$(date +%s.%N)
+myNameIs=${0##*/}
 
 #################################
 #
-#  version: 1.2.2.0005
+#  version: 1.2.3.0002
 #  date: 25.05.2018
-#  mod': 05.02.2019
+#  mod': 11.02.2019
 #  Copyright Tommi Nikkilae 2018-2019
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -55,9 +56,17 @@ strtTme=$(date +%s.%N)
 #
 #  /usr/local/etc/common.cfg
 #
-	myPathIs=${0%/*}
-	[ -f "$myPathIs/etc/common.cfg" ] && commonFile="$myPathIs/etc/common.cfg" || commonFile="/usr/local/etc/common.cfg"
-	. "$commonFile"
+	commonFile="/usr/local/etc/common.cfg"
+#	[ -f "$myPathIs/etc/common.cfg" ] && commonFile="$myPathIs/etc/common.cfg" || commonFile="/usr/local/etc/common.cfg"
+	if [ -f "$commonFile" ]; then
+		if ! . "$commonFile"; then
+			logger "$myNameIs :: Reading of common file $commonFile failed. Die."
+			exit 1
+		fi
+	else
+		logger "$myNameIs :: Common file $commonFile not found. Die."
+		exit 1
+	fi
 #
 #  If you want errors to kill the script, use
 	errKills=1
@@ -90,7 +99,7 @@ strtTme=$(date +%s.%N)
 #
 #  Define the minimum time between push notifications
 #
-	minNotifyIntervalInMinutes=15
+	minNotifyIntervalInMinutes=86400
 #
 #################################
 
@@ -99,13 +108,20 @@ strtTme=$(date +%s.%N)
 #  Set some more variables here if needed
 #	myVar1=foo
 #	myVar2="Lorem ipsum."
-	sleep=1.5
+	sleep="2.2"
+	dht22LockFile="/lockdir/dht22LockFile"
+#
 #
 #################################
 
 #################################
 #
 #  Functions begin here
+#
+	removeLock() {
+		logThis "DHT22 lock ($dht22LockFile) remove requested..." "T" "$FUNCNAME"
+		[ $(${SH_RM} -f $dht22LockFile & > /dev/null) ] && err "2" "$dht22LockFile" || logThis "Lock file $dht22LockFile removed." "D"
+	}
 #
 #  Functions end. Your code starts here.
 #
@@ -115,36 +131,63 @@ strtTme=$(date +%s.%N)
 #
 # Actual code part goes here...
 #
-
-dht22LockFile="/lockdir/dht22LockFile"
-
 # Check for our lock file;
 # If exists, wait: another script is accessing DHT22
-
-i=0
-maxWaitIters=10
-
-while [ -f "$dht22LockFile" ]; do
-	logThis "DHT22 busy, waiting ($i/$maxWaitIters)..."
-	${SH_SLEEP} $sleep;
-	(( i++ ))
-	if [ "$i" -eq "$maxWaitIters" ]; then
-		err 19 "$myNameIs, $i tries"
-		break
-	fi
-done
-
+#
+	i=0
+	maxWaitIters=15
+#
+	logThis "Checking if DHT22 is available..." "T"
+	while [ -f "$dht22LockFile" ]; do
+		logThis "DHT22 busy, waiting for $sleep sec(s) for re-read ($i/$maxWaitIters)..." "D"
+		${SH_SLEEP} $sleep;
+		(( i++ ))
+		if [ "$i" -eq "$maxWaitIters" ]; then
+			err 19 "$myNameIs" "$i"
+			break
+		fi
+	done
+#
+	logThis "Check done. Errors were logged if any." "T"
+	logThis "Creating lock file for DHT22 read..." "T"
+#
 # Create lock file to prevent other scripts from
 # accessing DHT22 while we poll it
-logThis "Create lock file for DHT22."
-${SH_TOUCH} $dht22LockFile
+#
+	[ $(${SH_TOUCH} $dht22LockFile & > /dev/null) ] && err "1" "$dht22LockFile" "$FUNCNAME" || logThis "Lock file $dht22LockFile created." "D" "$FUNCNAME"
+#
+	logThis "Querying the source..." "T"
+	sourceData=$(/usr/local/sbin/DHTXXD-exec)
+	sourceStatus=$(${SH_ECHO} "$sourceData"|${SH_CUT} -d ' ' -f 1)
+	# debugging. Set sourceStatus NOT EQUAL to 0 for error handling to take place...
+	#sourceStatus=3
+	logThis "Read status from DHT22: $sourceStatus."
 
-/usr/local/sbin/DHTXXD-exec
+	i=1
+	maxWaits=3
 
-${SH_SLEEP} $sleep
-${SH_RM} -f $dht22LockFile
-logThis "Remove lock file for DHT22."
-
+	while [ "$sourceStatus" -ne "0" ]; do
+		logThis "Read status: error. Retrying read [$i/$maxWaits], wait for $sleep secs between reads..." "T"
+		${SH_SLEEP} $sleep
+		sourceData=$(/usr/local/sbin/DHTXXD-exec)
+		sourceStatus=$(${SH_ECHO} "$sourceData"|${SH_CUT} -d ' ' -f 1)
+#		sourceStatus=3
+		logThis "Read status from DHT22: $sourceStatus."
+		(( i++ ))
+		if [ "$i" -eq "$maxWaits" ]; then
+			logThis "Too many read errors. This will result in error but we need to remove the DHT22 lock file before that so others can have a try at reading DHT22 too."
+			removeLock
+			#[ $(${SH_RM} -f $dht22LockFile & > /dev/null) ] && err "2" "$dht22LockFile" || logThis "Lock file $dht22LockFile removed." "D"
+			err 19 "$myNameIs" "$i"
+			break
+		fi
+	done
+	${SH_ECHO} $sourceData
+	logThis "Result from source [raw]: $sourceData" "I"
+	logThis "Wait for $sleep secs between reads..." "T"
+	${SH_SLEEP} $sleep
+	removeLock
+	#[ $(${SH_RM} -f $dht22LockFile & > /dev/null) ] && err "2" "$dht22LockFile" || logThis "Lock file $dht22LockFile removed." "D"
 #
 #################################
 
