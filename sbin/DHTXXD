@@ -99,7 +99,7 @@ myNameIs=${0##*/}
 #
 #  Define the minimum time between push notifications
 #
-	minNotifyIntervalInMinutes=86400
+	minNotifyIntervalInMinutes=360
 #
 #################################
 
@@ -108,9 +108,18 @@ myNameIs=${0##*/}
 #  Set some more variables here if needed
 #	myVar1=foo
 #	myVar2="Lorem ipsum."
-	sleep="2.2"
+	[ -z ${DHTsleep+x} ] && DHTsleep="2.2"
+	[ -z ${maxWaitIters+x} ] && maxWaitIters=15
+	iterSecs=$(echo "scale=0; ($maxWaitIters*$DHTsleep)/1"|bc -l)
+	if [ "$iterSecs" -ge "45"]; then
+		# Just to make sure the possbile wait cycle for DHT22
+		# will break at some point we limit the cycle to 33 secs
+		# (+ some from the actual script itself) if DHTsleep * maxWaitIters
+		# is more than 45 secs by setting:
+		DHTsleep=2.2
+		maxWaitIters=15
+	fi
 	dht22LockFile="/lockdir/dht22LockFile"
-#
 #
 #################################
 
@@ -135,12 +144,11 @@ myNameIs=${0##*/}
 # If exists, wait: another script is accessing DHT22
 #
 	i=0
-	maxWaitIters=15
 #
 	logThis "Checking if DHT22 is available..." "T"
 	while [ -f "$dht22LockFile" ]; do
-		logThis "DHT22 busy, waiting for $sleep sec(s) for re-read ($i/$maxWaitIters)..." "D"
-		${SH_SLEEP} $sleep;
+		logThis "DHT22 busy, waiting for $DHTsleep sec(s) for re-read ($i/$maxWaitIters)..." "D"
+		${SH_SLEEP} $DHTsleep;
 		(( i++ ))
 		if [ "$i" -eq "$maxWaitIters" ]; then
 			err 19 "$myNameIs" "$i"
@@ -167,8 +175,8 @@ myNameIs=${0##*/}
 	maxWaits=3
 
 	while [ "$sourceStatus" -ne "0" ]; do
-		logThis "Read status: error. Retrying read [$i/$maxWaits], wait for $sleep secs between reads..." "T"
-		${SH_SLEEP} $sleep
+		logThis "Read status: error. Retrying read [$i/$maxWaits], wait for $DHTsleep secs between reads..." "T"
+		${SH_SLEEP} $DHTsleep
 		sourceData=$(/usr/local/sbin/DHTXXD-exec)
 		sourceStatus=$(${SH_ECHO} "$sourceData"|${SH_CUT} -d ' ' -f 1)
 #		sourceStatus=3
@@ -184,8 +192,8 @@ myNameIs=${0##*/}
 	done
 	${SH_ECHO} $sourceData
 	logThis "Result from source [raw]: $sourceData" "I"
-	logThis "Wait for $sleep secs between reads..." "T"
-	${SH_SLEEP} $sleep
+	logThis "Wait for $DHTsleep secs between reads..." "T"
+	${SH_SLEEP} $DHTsleep
 	removeLock
 	#[ $(${SH_RM} -f $dht22LockFile & > /dev/null) ] && err "2" "$dht22LockFile" || logThis "Lock file $dht22LockFile removed." "D"
 #

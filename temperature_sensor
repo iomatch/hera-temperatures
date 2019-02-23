@@ -3,9 +3,9 @@ strtTme=$(date +%s.%N)
 
 #################################
 #
-#  version: 0.0.1.0011
+#  version: 0.0.1.0012
 #  date: 19.07.2018
-#  mod': 11.02.2018
+#  mod': 15.02.2018
 #  Copyright Tommi Nikkilae 2018-2019
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -48,7 +48,7 @@ strtTme=$(date +%s.%N)
 #  for production, use 0
 #  Default is '0'
 	debug=0
-	logging=5
+	logging=3
 #
 #  ALL common configurations
 #  and functions, etc. go to:
@@ -175,18 +175,21 @@ strtTme=$(date +%s.%N)
 			case $1 in
 				"-hum" )
 					srcRd="hum"
+					srcName="Humidity"
 					#OID=".1.3.6.1.2.1.25.5.10.0"
 					OID=".1.3.6.1.2.1.25.5.11"
 					;;
 
 				"-in" )
 					srcRd="temp"
+					srcName="Temperature"
 					#OID=".1.3.6.1.2.1.25.1.10.0"
 					OID=".1.3.6.1.2.1.25.1.11"
 					;;
 
 				* )
 					srcRd="temp"
+					srcName="Data"
 					OID=".1.0.0.0.0.0.0.0.0.0"
 					;;
 			esac
@@ -211,9 +214,10 @@ strtTme=$(date +%s.%N)
 			[ -w "$tempKanalaFile" ] && ${SH_ECHO} $res > $tempKanalaFile || logThis "$tempKanalaFile not writable" "D"
 
 			title="DHT22"
-			msg="$title: Temperature: $res"$'\xc2\xb0'"C [data for SNMP poller: $z]"
-			logThis "$msg" "T"
-			logThis "DHT22 poll over."
+			[ "$1" == "-hum" ] && msg="$title: $srcName: $res% [data for SNMP poller: $z]"
+			[ "$1" == "-in" ] && msg="$title: $srcName: $res"$'\xc2\xb0'"C [data for SNMP poller: $z]"
+			logThis "$msg" "I"
+			logThis "DHT22 poll over." "T"
 			;;
 
 		* )
