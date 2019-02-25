@@ -3,9 +3,9 @@ strtTme=$(date +%s.%N)
 
 #################################
 #
-#  version: 0.0.3.0001
+#  version: 0.0.3.0002
 #  date: 27.11.2018
-#  mod': 06.02.2019
+#  mod': 25.02.2019
 #  Copyright Tommi Nikkilae 2018
 #  url: http://f8.oire.fi/blog (techy things)
 #  url: http://f8.oire.fi/ (my photos)
@@ -94,11 +94,11 @@ strtTme=$(date +%s.%N)
 #  Set some more variables here if needed
 #	myVar1=foo
 #	myVar2="Lorem ipsum."
+	tempRecoveryThreshold="0.5"
 #  We need recovery tracker file also...
    trckErrRcvry=trckErr"-rcvry"
 	if [ -z "$tempLowLimit" ]; then
-		[ -z "$1" ] && tempLowLimit="0.5" || tempLowLimit=$1
-		tempRecoveryThreshold="0.2"
+		[ -z "$1" ] && tempLowLimit="5" || tempLowLimit=$1
 	elif [ ! -z "$1" ]; then
 		tempLowLimit=$1
 	fi
