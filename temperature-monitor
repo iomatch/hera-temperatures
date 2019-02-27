@@ -96,7 +96,7 @@ strtTme=$(date +%s.%N)
 #	myVar2="Lorem ipsum."
 	tempRecoveryThreshold="0.5"
 #  We need recovery tracker file also...
-   trckErrRcvry=trckErr"-rcvry"
+   trckErrRcvry=$trckErr"-rcvry"
 	if [ -z "$tempLowLimit" ]; then
 		[ -z "$1" ] && tempLowLimit="5" || tempLowLimit=$1
 	elif [ ! -z "$1" ]; then
@@ -203,7 +203,8 @@ fi
 msg="Temperature (in): $in"$'\xc2\xb0'"C."
 logThis "My limits are low: $tempLowLimit"$'\xc2\xb0'"C and recovery: $tempRecoveryLimit"$'\xc2\xb0'"C!" "T"
 #${SH_ECHO} $msg
-logThis "$msg [Alert threshold $tempLowLimit"$'\xc2\xb0'"C]" "I"
+logThis "$msg" "I"
+logThis "$msg [Alert threshold $tempLowLimit"$'\xc2\xb0'"C]" "T"
 #################################
 #
 # End the script

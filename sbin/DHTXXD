@@ -111,7 +111,7 @@ myNameIs=${0##*/}
 	[ -z ${DHTsleep+x} ] && DHTsleep="2.2"
 	[ -z ${maxWaitIters+x} ] && maxWaitIters=15
 	iterSecs=$(echo "scale=0; ($maxWaitIters*$DHTsleep)/1"|bc -l)
-	if [ "$iterSecs" -ge "45"]; then
+	if [ "$iterSecs" -ge "45" ]; then
 		# Just to make sure the possbile wait cycle for DHT22
 		# will break at some point we limit the cycle to 33 secs
 		# (+ some from the actual script itself) if DHTsleep * maxWaitIters
@@ -143,8 +143,20 @@ myNameIs=${0##*/}
 # Check for our lock file;
 # If exists, wait: another script is accessing DHT22
 #
-	i=0
-#
+	i=1
+	[ -z ${DHTsleep+x} ] && DHTsleep="2.2"
+	[ -z ${maxWaitIters+x} ] && maxWaitIters=15
+	iterSecs=$(echo "scale=0; ($maxWaitIters*$DHTsleep)/1"|bc -l)
+	if [ "$iterSecs" -ge "45" ]; then
+		# Just to make sure the possbile wait cycle for DHT22
+		# will break at some point we limit the sleep cycle to 33 secs
+		# (+ some from the actual script itself) if DHTsleep * maxWaitIters
+		# is more than 45 secs by setting:
+		DHTsleep=2.2
+		maxWaitIters=15
+		iterSecs=$(echo "scale=0; ($maxWaitIters*$DHTsleep)/1"|bc -l)
+	fi
+	logThis "Lock wait cycle now at $DHTsleep sec(s) and $maxWaitIters iterations for maximium of $iterSecs sec(s) of wait cycle..."
 	logThis "Checking if DHT22 is available..." "T"
 	while [ -f "$dht22LockFile" ]; do
 		logThis "DHT22 busy, waiting for $DHTsleep sec(s) for re-read ($i/$maxWaitIters)..." "D"
@@ -155,7 +167,7 @@ myNameIs=${0##*/}
 			break
 		fi
 	done
-#
+
 	logThis "Check done. Errors were logged if any." "T"
 	logThis "Creating lock file for DHT22 read..." "T"
 #

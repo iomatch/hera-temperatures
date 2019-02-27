@@ -207,7 +207,7 @@ strtTme=$(date +%s.%N)
 			${SH_ECHO} $type
 			finalRes=$(${SH_ECHO} $z| ${SH_AWK} '{print int($1+0.5)}')
 			logThis "\$z [$z] converted to \$finalRes '$finalRes'" "T"
-			${SH_ECHO} -e "$finalRes\n"
+			${SH_ECHO} -e "$finalRes"
 			logThis "snmp answer: $OID $type = $finalRes" "D"
 
 			res=$(${SH_ECHO} "scale=1;$z/10" | bc -l)
