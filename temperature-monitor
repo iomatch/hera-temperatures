@@ -166,6 +166,8 @@ in=$(getDHTread "temp")
 #	(( i++ ))
 #done
 
+[ -z "${in+x}" ] && err 7
+
 if [ $(${SH_ECHO} "$in>$tempLowLimit" | bc) -eq 0 ]; then
 	logThis "Temperature is below $tempLowLimit"$'\xc2\xb0'"C ($in"$'\xc2\xb0'"C)!"
 	err 20 "$in"$'\xc2\xb0'"C" "$tempLowLimit"$'\xc2\xb0'"C"
