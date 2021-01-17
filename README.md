@@ -1,5 +1,5 @@
 # hera-temperatures
-# version: 0.9.4
+# version: 1.0.0
 Linux bash scripts (etc.) needed to operate DHT22 & DS18B20 temperature sensors. 
 
  * [My Blog](http://f8.oire.fi/blog)
@@ -72,18 +72,19 @@ and the following to root's cron
 ```
 @reboot /usr/bin/pigpiod
 ```
-
-## Running a test script
+## Installing the script as service
+ [ work in progress ]
 
 ```
-[/path/to/your/scripts]temperature_sensor -in
+## Running the service
+
+```
+systemctal start heatmon.service
 ```
 
 ### Result?
 
-When run script should output only a temperature reading, eg.
-```
-5.6
+Check logs at /var/log/syslog or /var/log/user.log for 'temperature-monitor-service```
 ```
 
 ## Built With
