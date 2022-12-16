@@ -1,9 +1,10 @@
 [ -in | -out | -hum]
 -in
-	Current temperature from DHT22
+        Current temperature from DHT22
 
 -out
-	Current temperature from DS18B20
+        Current temperature from DS18B20
 
 -hum
-	Current humidity from DHT22
+        Current humidity from DHT22
+

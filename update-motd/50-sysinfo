@@ -1,0 +1,413 @@
+#!/bin/bash
+runtimeStart=$(date +'%s.%N')
+#################################
+#
+# Copyright Tommi Nikkilae 2018-2019
+# url: http://f8.oire.fi/blog (techy things)
+# url: http://f8.oire.fi/ (my photos)
+# email: f8@oire.fi
+# Released under GNU GPLv3
+#
+#################################
+
+#################################
+#
+#    50-sysinfo - generate the system information
+#    Copyright (c) 2013 Nick Charlton
+#    Copyright (c) 2021 Tommi Nikkilä
+#
+#    version: 1.0.11-20221216.0.2
+#    date: 01.04.2021§
+#    mod': 16.12.2022
+#
+#    Authors:	Nick Charlton 	<hello@nickcharlton.net>
+#		Tommi Nikkilä	<tommi@nikkila.cc>
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc.,
+#    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+#################################
+
+# Use
+#
+        rootRequired=0
+#
+# if the script DOES NOT need elevated priviledges
+# NOTE: user must explicitly define rootRequired=0
+# or root priviledges will be needed!
+
+#################################
+#
+#  Message for usage()
+#  If one is not provided
+#  we will look for one in the
+#  directory defined in common.cfg
+#  and provide that if found.
+#
+#       IFS='' read -r -d '' usageMessage <<ENDMESSAGE
+#       A brief summary of the command and how it operates.
+#       $(/usr/bin/basename "$0") uses no parameters.
+#       NOTE! One must be provided still!
+#       ENDMESSAGE
+#
+# This ends usage() message [usageMessage]
+#
+#################################
+
+#################################
+#
+#  Common variables
+#
+#  for debugging, use 1 (or '--test')
+#  for production, use 0
+#  Default is '0'
+        debug=1
+        logging=1
+	sysinfoFile="/run/services-static"
+#
+#  ALL common configurations
+#  and functions, etc. go to:
+#
+#  /usr/local/etc/common.cfg
+#
+#	myPathIs="$HOME"
+	. "/home/pi/bin/etc/common.cfg"
+#
+#  If you want errors to kill the script, use
+        errKills=1
+#  else the exit code is just returned from function with
+#       errKills=0
+#  Default is '1'
+#
+#  Common variables end
+#
+#################################
+
+#exec >&3 2>&3 3>&-
+
+#################################
+#
+#  Functions begin here
+#
+#
+function quickTimer() {
+	runtimeTempStart=$1
+	runtimeTempEnd=$(date +'%s.%N')
+	runtimeTempTotal=$(echo "scale=2;($runtimeTempEnd-$runtimeTempStart)/1"|bc -l)
+	runtimeTempTime=$(displaytime "${runtimeTempTotal}")
+	echo "${runtimeTempTime}"
+}
+#
+#  Functions end. Your code starts here.
+#
+#################################
+
+loadLimit=3
+diskLimit=75
+memLimit=95
+tempLimit=50
+
+timeout=7
+
+RED="\033[1;31m"
+YELLOW="\033[1;33m"
+GREEN="\033[1;32m"
+lightBLUE="\033[1;94m"
+lightMAGENTA="\033[1;95m"
+
+bold="\e[1m"
+underline="\e[4m"
+italic="\e[3m"
+NOCOLOR="\033[0m"
+
+updateList="/tmp/apt-avail.tmp"
+
+USdate=`date`
+
+date=`date +'%a %d.%m.%Y %H:%M:%S, week %V (%z %Z):'`
+echo -e "System information as of $date"
+echo
+
+#[[ -z "${operator}" ]] && curl -m 7 --connect-timeout $timeout -s ipinfo.io > "${IPinfoFile}"
+
+quickStart=$(date +'%s.%N')
+logThis "Checking Operator for Internet connection..." "I"
+while [ -z "${operator}" ]; do
+	(( i++ ))
+	IPinfoFile="/lockdir/ipinfo"
+	if [[ -f "${IPinfoFile}" ]]; then
+#		[[ $(find "/lockdir/ipinfo" -mmin +10) ]] && echo "File was NOT modified in last 10 mins!" || echo "File WAS modified in last 10 mins!"
+		if [[ $(find "/lockdir/ipinfo" -mmin +10) ]]; then
+#			echo "File is over 10 mins old."
+			curl -m 7 --connect-timeout $timeout -s ipinfo.io > "${IPinfoFile}"
+#		else
+#			echo "File is under 10 mins old."
+		fi
+#	elif [[ ! -f "${IPinfoFile}" ]]; then
+	else
+		logThis "IP information cache file not found. Checking the info from 'net..." "D"
+		curl -m 7 --connect-timeout $timeout -s ipinfo.io > "${IPinfoFile}"
+	fi
+	[[ "${i}" -gt "3" ]] && break || logThis "Run $i/3 of querying information for external IP..." "T"
+done
+
+extIP=$(jq -r .ip ${IPinfoFile}|xargs)
+extHostname=$(jq -r .hostname ${IPinfoFile})
+operator=$(jq -r .org ${IPinfoFile}|cut -d " " -f 2-)
+
+[[ "${operator}" == "Elisa Oyj" ]] && operCLR="${lightBLUE}"
+[[ "${operator}" == "DNA Oyj" ]] && operCLR="${RED}"
+
+ran4=$(quickTimer "${quickStart}")
+logThis "Operator for Internet connection detected as ${operator}. [${ran4}]" "I"
+
+#echo -e "\n\n***** ${operator} *****\n"
+
+printf "Operator:\t\t${operCLR}%s${NOCOLOR}\n" "${operator}"
+printf "External IP Address:\t${operCLR}%s${NOCOLOR}\n" "${extIP}"
+
+#touch "${IPinfoFile}"
+[[ -f "${IPinfoFile}" ]] && chmod 777 "${IPinfoFile}" > /dev/null 2>&1
+
+
+padC=0
+quickStart=$(date +'%s.%N')
+logThis "Look for local netdevs and display IP information about them." "D"
+for dev in $(/sbin/ip -o link show | /usr/bin/awk -F ': ' '{print $2}'|/bin/grep -v "lo"); do
+	while read -r xtrIP; do
+		propedIP="$(echo "${xtrIP}"|/usr/bin/tr -s ' \t\n\r\f' ':'|/usr/bin/cut -d ":" -f 4|cut -d '/' -f 1|xargs)"
+		logThis "Analysing ${propedIP}..." "5"
+		[[ "${padC}" -eq "0" ]] && padding="" || padding=", "
+		if [[ ! -z "$propedIP" ]]; then
+			IPs+="${padding}${propedIP}"
+			padC=1
+		fi
+	done <<< $(/sbin/ip -4 -o addr show $dev)
+done
+IPs=$(echo "${IPs}"|xargs)
+ran4=$(quickTimer "${quickStart}")
+logThis "Internal IP Address: ${IPs} [${ran4}]" "I"
+
+printf "Internal IP Address:\t%s\n" "${IPs}"
+echo
+
+quickStart=$(date +'%s.%N')
+logThis "Checking start uptimes for ${HOSTNAME}..." "D"
+# System start + uptime
+since="$(uptime -s)"
+time=`uptime | grep -ohe 'up .*' | sed 's/,/\ hours/g' | awk '{ printf $2" "$3 }'`
+[[ "${tmpVar}" -ge "$tempLimit" ]] && CPUcolor="${RED}" || CPUcolor="${GREEN}"
+printf "System start:\t${lightBLUE}%s${NOCOLOR}\tSystem uptime:\t${lightBLUE}%-12s${NOCOLOR}\n" "$since" "$time"
+
+
+ran4=$(quickTimer "${quickStart}")
+logThis "System start ${since}, uptime ${time} [${ran4}]" "I"
+
+quickStart=$(date +'%s.%N')
+logThis "Checking for system load and CPU temperature..." "D"
+# System load + CPU temperature
+tmpRaw=$(/usr/bin/vcgencmd measure_temp|cut -d '=' -f 2|cut -d "'" -f 1)
+tmpVar=$(echo "scale=0;$tmpRaw*1/1"|bc -l)
+
+load=`cat /proc/loadavg | awk '{print $1}'`
+loadVar=$(echo "scale=0;$load*1/1"|bc -l)
+[[ "${loadVar}" -gt "${loadLimit}" ]] && LOADcolor="${RED}" || LOADcolor="${GREEN}"
+
+ran4=$(quickTimer "${quickStart}")
+logThis "System load: ${load}, CPU ${tmpRaw} [${ran4}]" "I"
+printf "System load:\t${LOADcolor}%-12s${NOCOLOR}\t\tCPU temp:\t${CPUcolor}%s"$'\xc2\xb0'"C${NOCOLOR}\n" "$load" "${tmpRaw}"
+
+quickStart=$(date +'%s.%N')
+logThis "Checking for memory and swap usage..." "D"
+# Memory + swap usage
+memFree=$(cat /proc/meminfo | grep MemFree | awk {'print $2'})
+MemTotal=$(cat /proc/meminfo | grep MemTotal | awk {'print $2'})
+memory_calc=$(echo "scale=4;($MemTotal-$memFree) /$MemTotal * 100"|bc -l)
+memoryComp=$(echo "scale=0;($memory_calc+0.1)/1"|bc -l)
+memory_usage=$(echo "scale=1;$memory_calc/1"|bc -l)
+[[ "$memoryComp" -lt "10" ]] && memoryPad="0" || memoryPad=""
+[[ "$memoryComp" -gt "${memLimit}" ]] && memColor="${RED}" || memColor="${GREEN}"
+swapFree=$(cat /proc/meminfo | grep SwapFree | awk {'print $2'})
+swapTotal=$(cat /proc/meminfo | grep SwapTotal | awk {'print $2'})
+[[ "$swapTotal" -gt "0" ]] && swap_calc=$(echo "scale=4;($swapTotal-$swapFree) /$swapTotal * 100"|bc -l) || swap_calc=0
+swapComp=$(echo "scale=0;($swap_calc+0.1)/1"|bc -l)
+swap_usage=$(echo "scale=1;$swap_calc/1"|bc -l)
+[[ "$swapComp" -gt "${memLimit}" ]] && swapColor="${RED}" || swapColor="${GREEN}"
+[[ "$swapComp" -lt "10" ]] && swapPad=" " || swapPad=""
+[[ "$swapComp" -eq "0" ]] && swapPad="0" || swapPad=""
+ran4=$(quickTimer "${quickStart}")
+logThis "Memory usage ${memoryPad}${memory_usage},  swap usage: ${swapPad}${swap_usage}. [${ran4}]" "I"
+printf "Memory usage:\t${memColor}%-12s${NOCOLOR}\t\tSwap usage:\t${swapColor}%s${NOCOLOR}\n" "${memoryPad}${memory_usage}%" "${swapPad}${swap_usage}%"
+
+quickStart=$(date +'%s.%N')
+logThis "Checking for storage usage..." "D"
+# Storage usage / + ?
+root_usage=`df -h / | awk '/\// {print $(NF-1)}'|tr -d '%'`
+root_usageVar=$(echo "scale=0;$root_usage*1/1"|bc -l)
+[[ "${root_usageVar}" -gt "${diskLimit}" ]] && ROOTcolor="${RED}" || ROOTcolor="${GREEN}"
+
+ran4=$(quickTimer "${quickStart}")
+logThis "Usage on /:${root_usage} [${ran4}]" "I"
+printf "Usage on /:${ROOTcolor}\t%-12s${NOCOLOR}\n" "${root_usage}%"
+
+quickStart=$(date +'%s.%N')
+users=`users | wc -w`
+processes=`ps aux | wc -l`
+ran4=$(quickTimer "${quickStart}")
+logThis "Local users: ${users}, running processes: ${processes}. [${ran4}]" "I"
+printf "Local Users:\t${lightBLUE}%-12s${NOCOLOR}\t\tProcesses:\t${lightBLUE}%s${NOCOLOR}\n" "${users}" "${processes}"
+echo
+
+logThis "Detecting services..." "D"
+quickStartSrv=$(date +'%s.%N')
+if [[ -f "${sysinfoFile}" ]]; then
+	logThis "${sysinfoFile} found. Using it for services..." "I"
+	cat "${sysinfoFile}"
+else
+echo -e "${bold}Services${NOCOLOR}"
+#for service in bind9 pihole-FTL cups smbd ntp apache2 plexmediaserver transmission-daemon; do
+for service in ssh dhcpcd bind9 pihole-FTL data rsyslog watchdog dyfi smbd ntp vncserver apache2 lighttpd grafana-server mysqld mariadb serverJS cockpit cups transmission-daemon cryptdrivemount file-monitor checkmyip smbpasswd-web temperature-monitor-service grafana-daemon mqttreporter mqttservicecontrol; do
+	quickStart=$(date +'%s.%N')
+	logThis "Checking ${service} and status..." "D"
+	case ${service} in
+		data)
+			serviceType="mount"
+			;;
+		cockpit)
+			serviceType="socket"
+			;;
+		*)
+			serviceType="service"
+			;;
+	esac
+
+#	assume inactive satus
+	status=1
+#	then check status
+#	status=$(service_exists "${service}" "${serviceType}")
+	if service_exists "${service}" "${serviceType}"; then
+		status=$(systemctl --quiet is-active "${service}.${serviceType}"; echo $?)
+#		status=$(systemctl status $service | grep "Active")
+		logThis "${service}.${serviceType} status '${status}'." "D"
+		if [[ "$status" -eq "0" ]]; then
+			statusInfo="  active  "
+			clr="${GREEN}"
+		else
+			statusInfo=" inactive "
+			clr="${RED}"
+		fi
+		srv=$(echo $service|cut -d "." -f 1)
+		srv="${srv:0:22}"
+		logThis "${srv}.${serviceType}: $(echo "${statusInfo}"|xargs)" "I"
+		printf "  %-38s[${clr}%s${NOCOLOR}]\n" "${srv}.${serviceType}" "${statusInfo}"
+	fi
+	ran4=$(quickTimer "${quickStart}")
+	unset status
+	logThis "${service} detection completed in ${ran4}." "I"
+done
+echo
+if [[ -f "/usr/bin/supervisorctl" ]]; then
+	[[ $(supervisorctl status tuxtunnel|xargs|grep "RUNNING") ]] && printf "  ${YELLOW}%-38s${NOCOLOR}[ ${GREEN}%s${NOCOLOR} ]\n\n" "dataplicity" " alive! " || printf "  %-38s[ ${RED}%s${NOCOLOR} ]\n\n" "dataplicity" "  dead  "
+else
+	logThis "Dataplicity not detected." "D"
+	printf "  %-38s[ %s ]\n\n" "dataplicity" "  n/a   "
+fi
+
+#service IP:ports
+if service_exists "bind9"; then
+logThis "Checking DNS services..." "D"
+echo -e "${bold}DNS listen ports${NOCOLOR}"
+	for service in named pihole; do
+		quickStart=$(date +'%s.%N')
+		i=0
+		while read -r line; do
+			listenInfo=$(echo "$line"|tr -d "LISTEN"|xargs|cut -d " " -f 1,4)
+			listenProto=$(echo "${listenInfo}"|cut -d " " -f 1)
+			listenIP=$(echo "${listenInfo}"|cut -d " " -f 2|cut -d ":" -f 1)
+			listenPort=$(echo "${listenInfo}"|cut -d " " -f 2|cut -d ":" -f 2)
+#			echo "output of vars :: listenInfo: '${listenInfo}', listenProto: '${listenProto}', listenIP: '${listenIP}', listenPort: '${listenPort}'"
+			logThis "$service $listenProto $listenIP $listenPort" "I"
+			printf "  %6s [%s]:%16s${bold}:%s${NOCOLOR}%s\n" $service $listenProto $listenIP $listenPort
+		done <<< $(sudo netstat -tulpn|grep "${service}"|grep ':53 ')
+		ran4=$(quickTimer "${quickStart}")
+		logThis "${service} detection completed in ${ran4}." "I"
+	done
+echo
+fi
+fi
+ran4srv=$(quickTimer "${quickStartSrv}")
+logThis "Service detected in ${ran4srv}." "I"
+
+if [[ -d "/netstorage" ]]; then
+	tempSRC="/netstorage/heralan/run/heraaccess/var/www/include/temps.php"
+	if [[ -f "${tempSRC}" ]]; then
+		hTm=$(grep "heratemp" "${tempSRC}"|cut -d '"' -f 2)
+		cTm=$(grep "cooptemp" "${tempSRC}"|cut -d '"' -f 2)
+		hum=$(grep "coophum" "${tempSRC}"|cut -d '"' -f 2)
+		printf "${bold}Heramäki:${NOCOLOR}${lightBLUE}\t\t%8s"$'\xc2\xb0'"C${NOCOLOR}\n" "${hTm}"
+		printf "${bold}coop:${NOCOLOR}\t\t${lightBLUE}\t%8s"$'\xc2\xb0'"C${NOCOLOR}\n" "${cTm}"
+	fi
+	coopSRC="/netstorage/heralan/run/heraaccess/var/www/include/coop.php"
+	if [[ -f "${coopSRC}" ]]; then
+		hatch=$(grep "coopHatch" "${coopSRC}"|cut -d '"' -f 2)
+		door=$(grep "coopDoor" "${coopSRC}"|cut -d '"' -f 2)
+
+		if [[ "${hatch}" -eq "0" ]]
+		then
+			hatch=" open "
+			hatchCLR="${GREEN}"
+		elif [[ "${hatch}" -eq "1" ]]
+		then
+			hatch="closed"
+			hatchCLR="${RED}"
+		else
+			hatch=" fail "
+			hatchCLR="${NOCOLOR}"
+		fi
+
+		if [[ "${door}" -eq "0" ]]
+		then
+			door=" open "
+			doorCLR="${GREEN}"
+		elif [[ "${door}" -eq "1" ]]
+		then
+			door="closed"
+			doorCLR="${RED}"
+		else
+			door=" fail "
+			doorCLR="${NOCOLOR}"
+		fi
+		printf "  hatch:\t\t[${hatchCLR} %s ${NOCOLOR}]\n  door:\t\t\t[${doorCLR} %s ${NOCOLOR}]\n\n" "${hatch}" "${door}"
+	fi
+
+fi
+
+#conIP=$(echo $SSH_CONNECTION|xargs|cut -d " " -f 1)
+conIP=$(who -m --ips|awk '{print $5}')
+[[ ! -z "${conIP}" ]] && printf "Connection from ${bold}%s${NOCOLOR}\n" "${conIP}"
+
+[[ "$(wc -c $updateList|cut -d " " -f 1)" -gt "3" ]] && { echo -e "${bold}Available packages for update:${NOCOLOR}"; cat "$updateList"; echo -e "\n\nRun '${bold}apt-get upgrade${NOCOLOR}' to install the packages.\n"; }
+
+# heralan bash's common.cfg
+commonCFG="/home/pi/conf/common.conf"
+
+[[ -f "${commonCFG}" ]] && . "${commonCFG}"
+
+[[ ! -z "${AWS_server}" ]] && echo -e "Please find statistics at ${underline}${AWS_server}${NOCOLOR}."
+
+runtimeEnd=$(date +'%s.%N')
+runtimeTotal=$(echo "scale=2;($runtimeEnd-$runtimeStart)/1"|bc -l)
+tmpTime=$(displaytime "${runtimeTotal}")
+logThis "Script run time: ${tmpTime} (or '$runtimeTotal' seconds, from '${runtimeStart}' 'till '${runtimeEnd}')." "D"
+echo "This script ran for ${tmpTime}."
