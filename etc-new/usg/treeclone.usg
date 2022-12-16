@@ -1,0 +1,3 @@
+[/full/path/to/source/dir] [/full/path/to/destination/dir]
+
+This script moves files with their directory structure from A to B, leaving directory structure in A empty but intact.

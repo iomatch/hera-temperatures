@@ -1,0 +1,3 @@
+[STRING1] [STRING2]
+
+Displays parameters for current script. Add strings to display them as well (up to two).

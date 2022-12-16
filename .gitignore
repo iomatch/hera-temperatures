@@ -1,5 +1,8 @@
 etc/conf/*
 !etc/conf/example.conf
-
+old-files/
+orig-sbin/
+bin/
+*-dev
 *.swp
-
+.gitignore

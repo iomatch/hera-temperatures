@@ -1,0 +1,467 @@
+#!/bin/bash
+strtTme=$(date +%s.%N)
+
+#################################
+#
+#  version: 0.4.41
+#  date: 27.11.2018
+#  mod': 11.01.2021
+#  Copyright Tommi Nikkilae 2018
+#  url: http://f8.oire.fi/blog (techy things)
+#  url: http://f8.oire.fi/ (my photos)
+#  email: f8@oire.fi
+#  Released under GNU GPLv3
+#
+#################################
+
+# Use
+#
+	rootRequired=0
+#
+# if the script DOES NOT need elevated priviledges
+# NOTE: user must explicitly define rootRequired=0
+# or root priviledges will be needed!
+
+#################################
+#
+#  Message for usage()
+#  If one is not provided
+#  we will look for one in the
+#  directory defined in common.cfg
+#  and provide that if found.
+#
+#IFS='' read -r -d '' usageMessage <<ENDMESSAGE
+#A brief summary of the command and how it operates.
+#$(/usr/bin/basename "$0") uses no parameters.
+#NOTE! One must be provided still!
+#ENDMESSAGE
+#
+# This ends usage() message [usageMessage]
+#
+#################################
+
+#################################
+#
+#  Common variables
+#  ALL common cofigurations
+#  and functions, etc. go to:
+#
+#  /usr/local/etc/common.cfg
+#
+	myPathIs=${0%/*}
+	. "$myPathIs/etc/common.cfg"
+#
+#  for debugging, use 1 (or '--test')
+#  for production, use 0
+#  Default is '0'
+	[ -z "$debug" ] && debug=0
+	[ -z "$logging" ] && logging=0
+#
+#  If you want errors to kill the script, use
+	errKills=1
+#  else the exit code is just returned from function with
+#	errKills=0
+#  Default is '1'
+#
+#  Common variables end
+#
+#################################
+
+#################################
+#
+#  Dependencies check
+#
+	checkDep "/usr/lib/libpigpiod_if2.so" "/home/pi/bin/etc/temps.cfg"
+	. "/home/pi/bin/etc/temps.cfg"
+#
+#  Dependencies check end
+#
+#################################
+
+#################################
+#
+#  Define if push notifications are sent or not
+#
+	push=1
+#
+#################################
+
+#################################
+#
+#  	Set some more variables here if needed
+#	myVar1=foo
+#	myVar2="Lorem ipsum."
+	tempRecoveryThreshold="0.2"
+#  	We need recovery tracker file also...
+	trckErrRcvry=$trckErr"-rcvry"
+	if [ -z "$tempLowLimit" ]; then
+		[ -z "$1" ] && tempLowLimit="5" || tempLowLimit=$1
+	elif [ ! -z "$1" ]; then
+		tempLowLimit=$1
+	fi
+	sleep="1.5"
+	maxIters=10
+	res="0"
+
+	relayStatusChanges=0
+
+	logThis "tempRecoveryLimit: $tempRecoveryLimit, tempLowLimit: $tempLowLimit, tempRecoveryThreshold: $tempRecoveryThreshold" "T"
+   	extNtfyFile="/lockdir/kanala"
+	curMin=$(date +'%-M')
+	trgMin=$(( curMin + checkFreq ))
+
+	AWS_path="heaters"
+
+	declare -a unitsArray=(25 28 29)
+	declare -a unit
+
+	u=0
+	for var in "${unitsArray[@]}"; do
+		if [  "${unit[$u]}" -ne "${unit[$u]}" ] 2>/dev/null; then
+			unit[$u]="$var"
+		fi
+		[[ -z "${unit[$u]}" ]] && unit[$u]="$var"
+		(( u++ ))
+	done
+
+	[ "${unit[0]}" -eq "${unit[0]}" ] 2>/dev/null || unit[0]=25
+	[ "${unit[1]}" -eq "${unit[1]}" ] 2>/dev/null || unit[1]=28
+	[ "${unit[2]}" -eq "${unit[2]}" ] 2>/dev/null || unit[2]=29
+	if [[ "${unit[0]}" -eq "${unit[1]}" || "${unit[0]}" -eq "${unit[2]}" || "${unit[2]}" -eq "${unit[3]}" ]]; then
+		 unit[0]=25
+		 unit[1]=28
+		 unit[2]=29
+	fi
+	logThis "Heater units are defined as GPIO as follows:" "T"
+	logThis "unit[0]: ${unit[0]}" "T"
+	logThis "unit[1]: ${unit[1]}" "T"
+	logThis "unit[2]: ${unit[2]}" "T"
+
+#
+#################################
+
+#################################
+#
+#  Functions begin here
+#
+setRelay() {
+	functionStartTime=$(/bin/date +'%s.%N')
+	logThis "$FUNCNAME started..." "T" $FUNCNAME
+
+	unset relayUnit	relayAction
+	if [[ -z "$1" ]] || [[ -z "$2" ]]; then
+		logThis "Missing parameters. Unable to comply." "D" "$FUNCNAME"
+		return 1
+	else
+		relayUnit="$1"
+		relayAction="$2"
+		gpio mode $relayUnit out
+		logThis "Relay $relayUnit initiated." "T" "$FUNCNAME"
+		relayUnitStatus=$(gpio read $relayUnit)
+		logThis "Relay $relayUnit is currently set to '$relayUnitStatus' (to-be-set: '$relayAction')." "T" "$FUNCNAME"
+		if [[ "$relayUnitStatus" -eq "0" ]]; then
+			[[ "$relayAction" -eq "0" ]] && relayFromTo=1 || relayFromTo=4
+		elif [[ "$relayUnitStatus" -eq "1" ]]; then
+			[[ "$relayAction" -eq "0" ]] && relayFromTo=2 || relayFromTo=3
+		else
+			relayFromTo=99
+		fi
+
+#		logThis "DEBUG::: $relayUnitStatus :: $relayUnitStatus :: $relayAction" "T" "$FUNCNAME"
+		if [[ "$relayUnitStatus" -eq "$relayAction" ]]; then
+			logThis "Relay $relayUnit already set to '$relayAction'." "T" "$FUNCNAME"
+		else
+			gpio write $relayUnit $relayAction
+			((relayStatusChanges=relayStatusChanges+1))
+			logThis "Relay $relayUnit set to '$relayAction'. Relay changes in total: $relayStatusChanges." "I" "$FUNCNAME"
+		fi
+	fi
+
+	trackTime "$functionStartTime" "$(date +'%s.%N')" "$FUNCNAME"
+
+	echo "${relayFromTo}:${relayStatusChanges}"
+}
+
+toggleHeater() {
+	functionStartTime=$(/bin/date +'%s.%N')
+	logThis "$FUNCNAME started..." "T" $FUNCNAME
+	if [[ -z "$1" ]] || [[ -z "$2" ]]; then
+		logThis "Missing parameters. Unable to comply." "D" "$FUNCNAME"
+		return 1
+	else
+		logThis "Set $1 to $2." "T" "$FUNCNAME"
+		case $2 in
+			"on")
+				relayAction=0
+				;;
+			*)
+				relayAction=1
+		esac
+		case $1 in
+			1)
+#				relayUnit=25
+				relayUnit="${unit[0]}"
+				;;
+			2)
+#				relayUnit=28
+				relayUnit="${unit[1]}"
+				;;
+			3)
+#				relayUnit=29
+				relayUnit="${unit[2]}"
+				;;
+			all)
+				relayUnit="all"
+				;;
+		esac
+		if [[ "$relayUnit" == "all" ]]; then
+			for relayUnit in {25,28,29}; do
+				((debugCount++))
+				results=$(setRelay $relayUnit $relayAction)
+				logThis "results from setRelay(): '$results'" "T" "$FUNCNAME"
+				relayActionDone[$relayUnit]=$(echo "$results"|cut -d ":" -f 1)
+				relayStatusChanges=$(echo "$results"|cut -d ":" -f 2)
+			done
+		else
+			results=$(setRelay $relayUnit $relayAction)
+			relayActionDone[$relayUnit]=$(echo "$results"|cut -d ":" -f 1)
+			relayStatusChanges=$(echo "$results"|cut -d ":" -f 2)
+		fi
+	fi
+
+	trackTime "$functionStartTime" "$(date +'%s.%N')" "$FUNCNAME"	unset relayAction relayUnit
+}
+coopDoor() {
+	functionStartTime=$(/bin/date +'%s.%N')
+	logThis "$FUNCNAME started..." "T" $FUNCNAME
+	# hardware needs to be setup to detect door state
+	# for now manual entry with configuration file
+	# is enabled so heaters need not run if door open
+	if [[ -z "$coopDoor" ]]; then
+		if [[ -f "$coopDoorFile" ]]; then
+			coopDoor=$(cat "$coopDoorFile")
+		else
+			coopDoor=1
+		fi
+	fi
+	echo "$coopDoor"
+
+	trackTime "$functionStartTime" "$(date +'%s.%N')" "$FUNCNAME"
+}
+checkHeaters() {
+	functionStartTime=$(/bin/date +'%s.%N')
+	logThis "$FUNCNAME started..." "T" $FUNCNAME
+
+	# Check if heaters need to be turned on/off
+	# temperature in > heatCutOff: shut off all heaters
+
+	coopDoor=$(coopDoor)
+	if [[ "$coopDoor" -eq "1" ]]; then
+		heatCutOffComp=$(echo "scale=0; $heatCutOff*10/1"|bc -l)
+		heatCutOffSoftComp=$(echo "scale=0; $heatCutOffSoft*10/1"|bc -l)
+		tempLowLimitComp=$(echo "scale=0; $tempLowLimit*10/1"|bc -l)
+		inComp=$(echo "scale=0; $in*10/1"|bc -l)
+		logThis "Temperature now: $in (threshold: $thrshld)"$'\xc2\xb0'"C." "T"
+		logThis "[1: OFF] [2: OFF] [3: OFF]:        X > $heatCutOffComp" "T"
+		logThis "[1: ON ] [2: OFF] [3: OFF]:  $heatCutOffComp => X > $heatCutOffSoftComp" "T"
+		logThis "[1: ON ] [2: ON ] [3: OFF]:  $heatCutOffSoftComp => X > $tempLowLimitComp" "T"
+		logThis "[1: ON ] [2: ON ] [3: ON ]:        X <= $tempLowLimitComp" "T"
+		if [[ "$inComp" -gt "$heatCutOffComp" ]]; then
+			logThis "Initiate heaters at $in"$'\xc2\xb0'"C: set ALL heaters off!" "T"
+			toggleHeater all off
+		# temperature in > tempRecoveryLimit: 1+2
+		elif [[ "$inComp" -le "$heatCutOffComp" && "$inComp" -gt "$heatCutOffSoftComp" ]]; then
+			logThis "Initiate heaters at $in"$'\xc2\xb0'"C: set heater #1 on!" "T"
+			toggleHeater 1 on
+			toggleHeater 2 off
+			toggleHeater 3 off
+		elif [[ "$inComp" -le "$heatCutOffSoftComp" && "$inComp" -gt "$tempLowLimitComp" ]]; then
+			logThis "Initiate heaters at $in"$'\xc2\xb0'"C: set heaters #1 and #2 on!" "T"
+			toggleHeater 1 on
+			toggleHeater 2 on
+			toggleHeater 3 off
+		elif [[ "$inComp" -le "$tempLowLimitComp" ]]; then
+			logThis "Initiate heaters at $in"$'\xc2\xb0'"C: set ALL heaters on!" "T"
+			toggleHeater all on
+		else
+			logThis "Initiate heaters at $in"$'\xc2\xb0'"C: set ALL heaters on! NOTE! This is also a safety mechanism: if all else fails, all relays are switched ON." "T"
+			toggleHeater all on
+		fi
+	else
+		logThis "Coop door ajar. Skipped heater checks, turn off ALL heaters. Alert will be sent if outside temperature is below ${tempLowLimit}"$'\xc2\xb0'"C. [Alert not yet implemented!]" "I" "$FUNCNAME"
+#		# Function not yet exists
+#		coopDoorAlert "$tempLowLimit"
+		logThis "Initiate heaters at $in"$'\xc2\xb0'"C (reason: coop door ajar): set ALL heaters off!" "T"
+		toggleHeater all off
+	fi
+	trackTime "$functionStartTime" "$(date +'%s.%N')" "$FUNCNAME"
+	a=1
+	unset heaterStatuses heaterStatusTopRow heaterStatusBottomRow
+	for relayUnit in {25,28,29}; do
+		relayUnitStatus=$(gpio read $relayUnit)
+		[[ "$relayUnitStatus" -eq "0" ]] && statusTxt="ON " || statusTxt="off"
+		[[ "$a" -gt "1" ]] && heaterStatuses=${heaterStatuses}", "
+		heaterStatuses="${heaterStatuses} heater${a} [GPIO #${relayUnit}]: ${statusTxt}"
+		#logThis "$heaterStatuses" "I" "$FUNCNAME"
+		(( a++ ))
+	done
+	logThis "Heater statuses: $heaterStatuses" "I" "$FUNCNAME"
+}
+#  Functions end. Your code starts here.
+#
+#################################
+
+while true; do
+	unset countSecsStart in
+	if [ -z "$tempSet" ]; then
+		tempLowLimit=$(echo "scale=1;$tempSet*0.77"|bc -l)
+	fi
+	logThis "LIMITS: tempSet: $tempSet, tempLowLimit: $tempLowLimit" "T" 
+   	tempRecoveryLimit=$(${SH_ECHO} "$tempLowLimit $tempRecoveryThreshold" | ${SH_AWK} '{printf "%s", $1 + $2}')
+
+	declare -a relayActionDone
+	thrshld="0.1"
+	upperLimitMultiplier="1.4"
+	lowerLimitMultiplier="1.1"
+	heatCutOff=$(echo "scale=1;$tempLowLimit*$upperLimitMultiplier/1"|bc -l)
+	heatCutOffSoft=$(echo "scale=1;$tempLowLimit*$lowerLimitMultiplier/1"|bc -l)
+
+	countSecsStart=$(date +'%s')
+	logThis "Querying the DHT22..." "T"
+	in=$(getDHTread "temp")
+
+	[ -z "${in+x}" ] && err 7
+	# use extNtfyFile to notify of low temperatures
+	# here, we remove that file, should it exist
+	if [[ -f "$extNtfyFile" ]]; then
+		rm -rf "$extNtfyFile" > /dev/null 2>&1
+		logThis "'$extNtfyFile' removed." "D"
+	fi
+
+	if [ $(${SH_ECHO} "$in>$tempLowLimit" | bc) -eq 0 ]; then
+		# Turn on heaters
+		logThis "Need to turn on heaters! (rule \$in [$in] < \$tempLowLimit [$tempLowLimit])" "T"
+		#[[ "errKills" -eq "1" ]] && toggleHeater all on
+		# use extNtfyFile to notify of low temperatures
+		# here, we create that file, should it not exist
+		#[[ ! -f "$extNtfyFile" ]] && touch $extNtfyFile
+		logThis "Temperature is below $tempLowLimit"$'\xc2\xb0'"C ($in"$'\xc2\xb0'"C)!" "W"
+		touch $extNtfyFile
+		logThis "'$extNtfyFile' created." "D"
+		#skip err(), it kills the scriptm use ntfy()
+		#err 20 "$in"$'\xc2\xb0'"C" "$tempLowLimit"$'\xc2\xb0'"C"
+		msg="Temperature (in): $in"$'\xc2\xb0'"C. Notify threshold: $tempLowLimit"$'\xc2\xb0'"C."
+		ntfy "$msg"
+		#ntfy
+
+	# we must assume the temperature was below threshold before
+	# if we want to get notified when it was and is now no more
+	# So, let's test if we have an error file (this is true
+	# if notification was sent previously)
+	elif [ -e "$trckErr" ]; then
+		if [[ $(${SH_ECHO} "$in<$tempRecoveryLimit" | bc) -eq 0 ]]; then
+			msg="Temperature has recovered and is now: $in"$'\xc2\xb0'"C (recovery threshold: $tempRecoveryLimit"$'\xc2\xb0'"C)."
+			#touch $trckErr
+			# Experimental behavior: use trckErr to limit pushes
+			# So line was added above and following line was commented out below as well as
+			# exit commented out further below, see similar comment!
+			${SH_RM} -f $trckErr # || err "4" "$timeDiff"
+			#errLogging 3 22 "$msg" "$myNameIs"
+			#ntfy "$msg"
+#			checkHeaters
+			logThis "$msg" "I"
+			#skip err(), it kills the scriptm use ntfy()
+			#err 22 "$msg"
+			msg="Temperature (coop) recovered."
+			#ntfy "$msg"
+			#echo "A notify was sent with message: $msg."
+			# See, the thing is that scriptEnd() will do a push (again) and then create a lock file
+			# That will loop this option forever and ever when temperature "has recovered". We need to
+			# notify of this recovery *only once*. To do this, we will kill the script here.
+			# Dont worry: the script has already done it's bit and can safely be killed here.
+			#
+			# Experimental behavior: use trckErr to limit pushes
+			# So following line was commented out as well as
+			# touch add above, see similar comment!
+			#exit 0
+		else
+			msg="Temperature has recovered and is now: $in"$'\xc2\xb0'"C. This however is nothing new. I will not notify anyone of this. See: $trckErr"
+			logThis "$msg" "D"
+			# see above: we need to kill the script here and now.
+			exit 0
+		fi
+	else
+		msg="Temperature is above the notify treshold limit of $tempRecoveryLimit"$'\xc2\xb0'"C: $in"$'\xc2\xb0'"C)! No previous notification? Then this is not a recovery and no notification should be sent this time, either. [Based on existing '$trckErr' file.]"
+		logThis "$msg" "T"
+	fi
+
+	#Turn heaters on/off as needed
+	checkHeaters
+
+	msg="Temperature (in): $in"$'\xc2\xb0'"C. (Alert threshold: $tempLowLimit)."
+	logThis "My limits for notifications are: low: $tempLowLimit"$'\xc2\xb0'"C and recovery: $tempRecoveryLimit"$'\xc2\xb0'"C!" "T"
+	logThis "$msg" "I"
+
+	# report heater status changees to cloud
+	if [[ "$relayStatusChanges" -gt "0" ]]; then
+
+		d=$(date +'%s')
+		d=$(date '+%s' -d "@$(( ((d + 1) / 60) * 60))")
+
+		res1=${relayActionDone[25]}
+		res2=${relayActionDone[28]}
+		res3=${relayActionDone[29]}
+
+		callPart="timestamp=$d&heater1=$res1&heater2=$res2&heater3=$res3&doorCoop=$coopDoor&hatchCoop=$hatchCoop&lowLimit=$tempLowLimit"
+		logThis "callPart: '${callPart}'." "T"
+		curl2cloud "$AWS_path" "$callPart"
+
+	else
+		logThis "No relay status was changed. Cowardly refusing to write un-changed relay statuses to cloud." "T"
+		#logThis "DB: ${AWS_path} :: data: {$callPart}" "T"
+		logThis "DB: ${AWS_path}" "T"
+	fi
+
+	relayStatusChanges=0
+
+	[[ "$checkFreq" -lt "1" ]] && checkFreq=1
+	[[ "$checkFreq" -gt "10" ]] && checkFreq=10
+	countSecsStop=$(date +'%s')
+	countSecsTotal=$(( countSecsStart - countSecsStop ))
+	[[ "$countSecsTotal" -gt "58" ]] && countSecsTotal=58
+
+#	At night, less frequent checks
+	[[ "$fromHour" -le "1" ]] && fromHour=1
+	[[ "$fromHour" -gt "22" ]] && fromHour=22
+	[[ "$toHour" -lt "0" ]] && toHour=0
+	[[ "$toHour" -gt "23" ]] && toHour=23
+
+	[[ "$fromHour" -ge "$toHour" || -z "$toHour" || -z "$toHour" ]] && fromHour=6 && toHour=21
+
+	hour=$(date +'%-H')
+
+	[[ "$hour" -lt "$fromHour" || "$hour" -gt "$toHour" ]] && timeMultplier=5 || timeMultplier=1
+	sleepTill=$(( ((checkFreq * 60) * timeMultplier) + countSecsTotal ))
+		logThis "Idling. Next scheduled run is at $(date -d @$(( countSecsStop + sleepTill)) +'%c')." "I"
+		sleep $sleepTill
+
+#	re-read/re-load configuration option specific to this script (if found)
+	confFile="$incPath/etc/conf/$myNameIs.conf"
+	if [ -f "$confFile" ]; then
+		if . "$confFile"; then
+			logThis "Configuration file $confFile read." "D"
+		else
+			logtThis "Read $confFile FAILED!" "W"
+		fi
+	else
+		logThis "Configuration file $confFile not found. This is not an error." "T"
+	fi
+done
+#################################
+#
+# End the script
+#
+push=0
+scriptEnd
+#
+#################################

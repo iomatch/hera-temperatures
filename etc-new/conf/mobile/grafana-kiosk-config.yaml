@@ -1,0 +1,28 @@
+general:
+  kiosk-mode: full
+#  kiosk-mode: disabled
+  autofit: false
+  lxde: true
+  lxde-home: /home/pi
+
+target:
+#  login-method: gcom
+  login-method: local
+  username: heragraf
+  password: heramaki
+#  playlist: true
+  playlist: false
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/d/-T3IKMBMz/heramaki-temperatures-for-small-displays-i-b?orgId=1
+# use at Heramaki
+# "normal" displays
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/playlists/play/2?
+#  URL: http://hera.dy.fi/playlists/play/2?
+  URL: http://hera.dy.fi/d/mhsfOaaMk/heramaki-temperatures-for-small-displays-i
+# Heramaki sauna
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/playlists/play/7?
+# use at Levi
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/d/MqE-2D_Mz/levi-i?orgId=1&refresh=1m&from=now-3h&to=now&kiosk
+# use at Villa Koivula (includes mobile)
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/playlists/play/3?
+#  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/d/1IVi7eqGk/svino-with-mobile?orgId=1&kiosk&autofitpanels
+  ignore-certificate-errors: true

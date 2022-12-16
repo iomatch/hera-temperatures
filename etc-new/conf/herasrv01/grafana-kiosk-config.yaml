@@ -1,0 +1,17 @@
+general:
+  kiosk-mode: full
+  autofit: false
+  lxde: true
+  lxde-home: /home/pi
+
+target:
+#  login-method: gcom
+  login-method: local
+  username: heragraf
+  password: heramaki
+  playlist: true
+  playlist: false
+#  URL: 
+  URL: http://ec2-3-125-28-229.eu-central-1.compute.amazonaws.com:3000/playlists/play/6?kiosk&autofitpanels
+  ignore-certificate-errors: true
+
