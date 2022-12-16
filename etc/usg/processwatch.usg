@@ -1,3 +1,0 @@
-[process]
-
-This script is used to verify the existance of [process]. Reports no error(s) if found or an error if not found. Also, if a startup command is provided and the process is not currently not running, tries to start it.

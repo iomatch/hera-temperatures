@@ -1,5 +1,0 @@
-Usage $myNameIs [search_item]
-Exit statuses for script:
-0: Script executed correctly. There is nothing more to do.
-1: Script executed correctly but no matches were found. There is nothing more to do.
-2: No search paramater given. Script cannot continue.
